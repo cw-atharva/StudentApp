@@ -10,6 +10,9 @@ import {
 import {launchImageLibrary} from 'react-native-image-picker';
 import TextRecognition from 'react-native-text-recognition';
 import axios from 'axios';
+import {async} from '@firebase/util';
+
+const API_KEY = `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`;
 
 const WrittenExam = ({route}) => {
   const [selectedImage, setSelectedImage] = useState(null);
@@ -30,17 +33,16 @@ const WrittenExam = ({route}) => {
   const extractTextFromImage = async imageUri => {
     const result = await TextRecognition.recognize(imageUri);
     setExtractedText(result);
-    analyzeAnswer(question, answer);
   };
 
   const analyzeAnswer = async (question, answer) => {
     try {
       const response = await axios.post(
-        'https://api.openai.com/v1/engines/davinci-codex/completions',
+        'https://api.openai.com/v1/engines/text-davinci-002/completions',
         {
           prompt: `Question: ${question}\nAnswer: ${answer}\n`,
-          max_tokens: 100,
-          temperature: 0.3,
+          max_tokens: 1,
+          temperature: 0.7,
           n: 1,
           stop: null,
           log_level: 'info',
@@ -48,8 +50,7 @@ const WrittenExam = ({route}) => {
         {
           headers: {
             'Content-Type': 'application/json',
-            Authorization:
-              'Bearer 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',
+            Authorization: `Bearer ${API_KEY}`,
           },
         },
       );
@@ -60,20 +61,38 @@ const WrittenExam = ({route}) => {
       const score = parseFloat(completion.slice(scoreStart, scoreEnd).trim());
       const normalizedScore = 5 + score * 5;
       setScore(normalizedScore);
-      console.log(normalizedScore, '===================');
     } catch (error) {
       console.log('Error:', error);
     }
   };
 
-  const handleAnalyze = async () => {
-    const question = 'what is facebook?';
-    const answer =
-      'Facebook is a social networking platform founded by Mark Zuckerberg, along with his college roommates Eduardo Saverin, Andrew McCollum, Dustin Moskovitz, and Chris Hughes. It was launched in February 2004 initially as "Thefacebook" and later renamed as Facebook. Facebook is one of the largest and most popular social media platforms in the world.';
+  function removeExtraSpaces(str) {
+    return str.replace(/\s+/g, ' ').trim();
+  }
 
-    const result = await analyzeAnswer(question, answer);
-    console.log(result, '==================');
-    setScore(result);
+  function calculateScore(text, keywords) {
+    const textLower = removeExtraSpaces(text[0].toLowerCase());
+    const matchedKeywords = keywords.filter(keyword =>
+      textLower.includes(keyword),
+    );
+    const score = (matchedKeywords.length / keywords.length) * 100;
+    const additonalScore = score > 20 ? 30 : 0;
+    return Math.round(score + additonalScore);
+  }
+
+  const handleAnalyze = async text => {
+    // const result = await analyzeAnswer(
+    //   route.params.examData[route.params.index].question,
+    //   text[0],
+    // );
+    // setScore(result);
+
+    const score = calculateScore(
+      text,
+      route.params.examData[route.params.index].keywords,
+    );
+
+    setScore(score);
   };
 
   return (
@@ -81,7 +100,7 @@ const WrittenExam = ({route}) => {
       style={{paddingVertical: -350, backgroundColor: 'white', flexGrow: 1}}>
       <View style={styles.container}>
         <Text style={styles.title}>
-          {route.params.examData[route.params.index]}
+          {route.params.examData[route.params.index].question}
         </Text>
 
         {
@@ -94,27 +113,19 @@ const WrittenExam = ({route}) => {
 
         <Text>Please upload photo of your written answer</Text>
 
-        {score ? (
-          <View style={styles.extractedTextContainer}>
-            <Text style={styles.extractedText}>{score}</Text>
-          </View>
-        ) : null}
-
-        {extractedText && (
-          <TouchableOpacity style={styles.selectButton} onPress={handleAnalyze}>
+        {extractedText?.length > 0 && (
+          <TouchableOpacity
+            style={styles.selectButton}
+            onPress={() => handleAnalyze(extractedText)}>
             <Text style={styles.buttonText}>Analyze Answer</Text>
           </TouchableOpacity>
         )}
-        {/* 
-        {selectedImage && (
-          <View style={styles.imageContainer}>
-            <Image
-              source={{uri: selectedImage}}
-              style={styles.selectedImage}
-              resizeMode="contain"
-            />
+
+        {score && extractedText?.length > 0 ? (
+          <View style={styles.extractedTextContainer}>
+            <Text style={styles.extractedText}> Score is {score}</Text>
           </View>
-        )} */}
+        ) : null}
 
         {extractedText ? (
           <View style={styles.extractedTextContainer}>
